@@ -17,10 +17,7 @@ func LookupMDNS() {
 		}
 	})
 
-	err := mdns.Lookup("_foobar._tcp", entriesCh)
-	if err != nil {
-		fmt.Println("Lookup error:", err)
-	}
+	mdns.Lookup("_foobar._tcp", entriesCh)
 
 	close(entriesCh)
 	wg.Wait()

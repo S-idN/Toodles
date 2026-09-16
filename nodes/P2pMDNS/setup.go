@@ -9,6 +9,7 @@ import (
 
 func SetupMDNS(listenPort int) (*mdns.Server, error) {
 	host, errHost := os.Hostname()
+
 	if errHost != nil {
 		fmt.Println("Host error")
 	}
@@ -24,5 +25,7 @@ func SetupMDNS(listenPort int) (*mdns.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("HEREE", service.Service)
 	return server, nil
 }
