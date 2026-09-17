@@ -6,6 +6,11 @@ import (
 	"net"
 )
 
+func ReturnHashIdPortion() (hashIdPortion string) {
+	test := "Test"
+	return test
+}
+
 func StartServer(port string) error {
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -21,11 +26,11 @@ func StartServer(port string) error {
 			fmt.Println("Accept error:", err)
 			continue
 		}
-		go handleConnection(conn)
+		go HandleConnection(conn)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func HandleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
