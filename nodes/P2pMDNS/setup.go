@@ -7,14 +7,19 @@ import (
 	"github.com/hashicorp/mdns"
 )
 
-func SetupMDNS(listenPort int) (*mdns.Server, error) {
+func SetupMDNS(listenPort int) *mdns.Server {
 	host, errHost := os.Hostname()
+
+	// id := uuid.New().String()
+
+	// serviceName := "_" + host + id + "._tcp"
+	serviceName := "_foobar._tcp"
 
 	if errHost != nil {
 		fmt.Println("Host error")
 	}
 	info := []string{"My awesome service"}
-	service, errService := mdns.NewMDNSService(host, "_foobar._tcp", "", "", listenPort, nil, info)
+	service, errService := mdns.NewMDNSService(host, serviceName, "", "", listenPort, nil, info)
 
 	if errService != nil {
 		fmt.Println("Service error")
@@ -23,9 +28,10 @@ func SetupMDNS(listenPort int) (*mdns.Server, error) {
 	server, err := mdns.NewServer(&mdns.Config{Zone: service})
 	// defer server.Shutdown()
 	if err != nil {
-		return nil, err
+		fmt.Println("Server error:", err)
+		return nil
 	}
 
 	fmt.Println("HEREE", service.Service)
-	return server, nil
+	return server
 }
