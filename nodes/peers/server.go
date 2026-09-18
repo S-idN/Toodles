@@ -31,11 +31,10 @@ func StartServer(port int, newNode *models.Node) {
 
 		newNode.Conn = conn
 
+		go ReadFromPeer(conn)
+		go WriteToPeer(conn)
+
 		break
-
-		// return conn
-
-		// go HandleConnection(conn)
 	}
 }
 

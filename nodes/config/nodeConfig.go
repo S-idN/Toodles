@@ -128,8 +128,8 @@ func StartPeerOps(newNode *models.Node) {
 			continue
 		}
 
+		go peer.ReadFromPeer(newNode.PeerConn)
 		peer.WriteToPeer(newNode.PeerConn)
-		time.Sleep(10 * time.Second)
 
 		rounds += 1
 

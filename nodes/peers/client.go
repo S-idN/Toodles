@@ -22,11 +22,19 @@ func WriteToPeer(conn net.Conn) error {
 		message := scanner.Text() + "\n"
 		_, err := conn.Write([]byte(message))
 
-		if err != nil || scanner.Err() != nil {
+		if err != nil {
 			return fmt.Errorf("Error sending message to Peer")
 		}
 	}
-	return nil
+	return scanner.Err()
+}
+
+func ReadFromPeer(conn net.Conn) {
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		fmt.Println("Peer:", scanner.Text())
+	}
+	fmt.Println("Peer disconnected.")
 }
 
 func SendMessage(conn net.Conn, message string) error {
