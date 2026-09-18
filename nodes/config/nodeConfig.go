@@ -9,6 +9,8 @@ import (
 	"p2pChat/P2pMDNS"
 	"p2pChat/models"
 	peer "p2pChat/peers"
+	"strconv"
+	"strings"
 	"time"
 	"uuid"
 )
@@ -52,8 +54,8 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 	//NODE : Listen Port
 	newNode.ListenPort = listenPort
 
-	//NODE : Conn
-	// newNode.Conn = peer.StartServer(listenPort)
+	//NODE : Conn (listens for incoming connections in the background)
+	go peer.StartServer(listenPort, newNode)
 
 	newNode.Server = P2pMDNS.SetupMDNS(listenPort)
 
@@ -61,16 +63,52 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 
 	fmt.Println("STRUCT IS THIS:", newNode)
 
-	peerConn, err := peer.ConnectToPeer("localhost:" + newNode.PeerList[0])
-	newNode.PeerConn = peerConn
-
 	return newNode
 }
 
+// promptEntrySelection prints "name|addr:port" entries and returns the
+// "addr:port" portion of the one the user picks.
+func promptEntrySelection(entries []string) string {
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Println("Discovered peers:")
+		for i, e := range entries {
+			parts := strings.SplitN(e, "|", 2)
+			label := e
+			if len(parts) == 2 {
+				label = fmt.Sprintf("%s (%s)", parts[0], parts[1])
+			}
+			fmt.Printf("  [%d] %s\n", i, label)
+		}
+		fmt.Print("Select a peer by number: ")
+
+		raw, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Read error, try again:", err)
+			continue
+		}
+
+		choice, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || choice < 0 || choice >= len(entries) {
+			fmt.Println("Invalid selection, try again.")
+			continue
+		}
+
+		parts := strings.SplitN(entries[choice], "|", 2)
+		if len(parts) == 2 {
+			return parts[1] // addr:port
+		}
+		return entries[choice]
+	}
+}
+
 func StartPeerOps(newNode *models.Node) {
+	rounds := 0
+
 	for {
 		fmt.Println("Scanning local network...")
-		peerPort, err := P2pMDNS.LookupMDNS(newNode)
+		entries, err := P2pMDNS.LookupMDNS(newNode)
 
 		if err != nil {
 			fmt.Println("Scan error or no peers found:", err)
@@ -78,9 +116,10 @@ func StartPeerOps(newNode *models.Node) {
 			continue
 		}
 
-		fmt.Println("Struct is:", newNode)
+		addr := promptEntrySelection(entries)
+		fmt.Println("Connecting to", addr)
 
-		peerConn, err := peer.ConnectToPeer("localhost:" + peerPort)
+		peerConn, err := peer.ConnectToPeer(addr)
 		newNode.PeerConn = peerConn
 
 		if err != nil {
@@ -91,6 +130,12 @@ func StartPeerOps(newNode *models.Node) {
 
 		peer.WriteToPeer(newNode.PeerConn)
 		time.Sleep(10 * time.Second)
+
+		rounds += 1
+
+		if rounds >= 3 {
+			break
+		}
 	}
 }
 
