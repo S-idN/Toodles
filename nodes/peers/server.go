@@ -7,15 +7,11 @@ import (
 	"strconv"
 )
 
-func ReturnHashIdPortion() (hashIdPortion string) {
-	test := "Test"
-	return test
-}
-
 func StartServer(port int, newNode *models.Node) {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
-		fmt.Println("Failed start listener: %w", err)
+		fmt.Println("Failed to start listener:", err)
+		return
 	}
 	defer listener.Close()
 
@@ -29,26 +25,9 @@ func StartServer(port int, newNode *models.Node) {
 			continue
 		}
 
-		newNode.Conn = conn
-
-		go ReadFromPeer(conn)
-		go WriteToPeer(conn)
-
-		break
+		addr := conn.RemoteAddr().String()
+		if newNode.AddPeer(addr, conn) {
+			go ReadFromPeer(addr, conn, newNode)
+		}
 	}
 }
-
-// func HandleConnection(conn net.Conn) {
-// 	defer conn.Close()
-
-// 	reader := bufio.NewReader(conn)
-// 	for {
-// 		fmt.Println("Message:")
-// 		message, err := reader.ReadString('\n')
-// 		if err != nil {
-// 			fmt.Println("Connection closed:", err)
-// 			return
-// 		}
-// 		fmt.Println("Received message: ", message)
-// 	}
-// }

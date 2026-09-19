@@ -24,12 +24,12 @@ func GenerateBaseId() string {
 }
 
 func GenerateFinalId() string {
-	bootstrapNodes := []string{"ip_here"}
+	// bootstrapNodes := []string{"ip_here"}
 	hashId_portion := GenerateBaseId()
 
-	for i := 0; i < len(bootstrapNodes); i++ {
-		hashId_portion += peer.ReturnHashIdPortion()
-	}
+	// for i := 0; i < len(bootstrapNodes); i++ {
+	// 	hashId_portion += peer.ReturnHashIdPortion()
+	// }
 
 	return hashId_portion
 }
@@ -104,7 +104,7 @@ func promptEntrySelection(entries []string) string {
 }
 
 func StartPeerOps(newNode *models.Node) {
-	rounds := 0
+	go peer.WriteLoop(newNode) // one persistent broadcaster for the node's whole lifetime
 
 	for {
 		fmt.Println("Scanning local network...")
@@ -119,8 +119,7 @@ func StartPeerOps(newNode *models.Node) {
 		addr := promptEntrySelection(entries)
 		fmt.Println("Connecting to", addr)
 
-		peerConn, err := peer.ConnectToPeer(addr)
-		newNode.PeerConn = peerConn
+		conn, err := peer.ConnectToPeer(addr)
 
 		if err != nil {
 			fmt.Println("Connect error:", err)
@@ -128,14 +127,11 @@ func StartPeerOps(newNode *models.Node) {
 			continue
 		}
 
-		go peer.ReadFromPeer(newNode.PeerConn)
-		peer.WriteToPeer(newNode.PeerConn)
-
-		rounds += 1
-
-		if rounds >= 3 {
-			break
+		if newNode.AddPeer(addr, conn) {
+			go peer.ReadFromPeer(addr, conn, newNode)
 		}
+
+		time.Sleep(10 * time.Second)
 	}
 }
 

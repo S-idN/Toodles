@@ -13,7 +13,7 @@ func SetupMDNS(listenPort int) *mdns.Server {
 	// id := uuid.New().String()
 
 	// serviceName := "_" + host + id + "._tcp"
-	serviceName := "_foobar._tcp"
+	serviceName := "_toodles__p2pchat._tcp"
 
 	if errHost != nil {
 		fmt.Println("Host error")
@@ -24,6 +24,7 @@ func SetupMDNS(listenPort int) *mdns.Server {
 	if errService != nil {
 		fmt.Println("Service error")
 	}
+
 	// Create the mDNS server, defer shutdown
 	server, err := mdns.NewServer(&mdns.Config{Zone: service})
 	// defer server.Shutdown()
@@ -32,6 +33,5 @@ func SetupMDNS(listenPort int) *mdns.Server {
 		return nil
 	}
 
-	fmt.Println("HEREE", service.Service)
 	return server
 }

@@ -22,7 +22,7 @@ func LookupMDNS(newNode *models.Node) ([]string, error) {
 		}
 	})
 
-	mdns.Lookup("_foobar._tcp", entriesCh)
+	mdns.Lookup("_toodles__p2pchat._tcp", entriesCh)
 
 	close(entriesCh)
 	wg.Wait()
