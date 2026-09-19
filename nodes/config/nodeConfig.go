@@ -11,7 +11,6 @@ import (
 	peer "p2pChat/peers"
 	"strconv"
 	"strings"
-	"time"
 	"uuid"
 )
 
@@ -68,9 +67,7 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 
 // promptEntrySelection prints "name|addr:port" entries and returns the
 // "addr:port" portion of the one the user picks.
-func promptEntrySelection(entries []string) string {
-	reader := bufio.NewReader(os.Stdin)
-
+func promptEntrySelection(entries []string, scanner *bufio.Scanner) string {
 	for {
 		fmt.Println("Discovered peers:")
 		for i, e := range entries {
@@ -83,11 +80,11 @@ func promptEntrySelection(entries []string) string {
 		}
 		fmt.Print("Select a peer by number: ")
 
-		raw, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("Read error, try again:", err)
+		if !scanner.Scan() {
+			fmt.Println("Read error or input closed, try again.")
 			continue
 		}
+		raw := scanner.Text()
 
 		choice, err := strconv.Atoi(strings.TrimSpace(raw))
 		if err != nil || choice < 0 || choice >= len(entries) {
@@ -104,34 +101,38 @@ func promptEntrySelection(entries []string) string {
 }
 
 func StartPeerOps(newNode *models.Node) {
-	go peer.WriteLoop(newNode) // one persistent broadcaster for the node's whole lifetime
+	scanner := bufio.NewScanner(os.Stdin)
 
-	for {
-		fmt.Println("Scanning local network...")
-		entries, err := P2pMDNS.LookupMDNS(newNode)
+	fmt.Println("Type a message to broadcast to connected peers, or /scan to discover peers.")
 
-		if err != nil {
-			fmt.Println("Scan error or no peers found:", err)
-			time.Sleep(10 * time.Second)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if line == "/scan" {
+			fmt.Println("Scanning local network...")
+			entries, err := P2pMDNS.LookupMDNS(newNode)
+
+			if err != nil {
+				fmt.Println("Scan error or no peers found:", err)
+				continue
+			}
+
+			addr := promptEntrySelection(entries, scanner) // pass the SAME scanner in
+			fmt.Println("Connecting to", addr)
+
+			conn, err := peer.ConnectToPeer(addr)
+			if err != nil {
+				fmt.Println("Connect error:", err)
+				continue
+			}
+
+			if newNode.AddPeer(addr, conn) {
+				go peer.ReadFromPeer(addr, conn, newNode)
+			}
 			continue
 		}
 
-		addr := promptEntrySelection(entries)
-		fmt.Println("Connecting to", addr)
-
-		conn, err := peer.ConnectToPeer(addr)
-
-		if err != nil {
-			fmt.Println("Connect error:", err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		if newNode.AddPeer(addr, conn) {
-			go peer.ReadFromPeer(addr, conn, newNode)
-		}
-
-		time.Sleep(10 * time.Second)
+		newNode.Broadcast(line)
 	}
 }
 
