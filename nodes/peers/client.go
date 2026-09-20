@@ -3,6 +3,7 @@ package peer
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -32,9 +33,17 @@ func ConnectToPeer(address string, newNode *models.Node, expectedPeerID string) 
 func ReadFromPeer(addr string, conn net.Conn, newNode *models.Node) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		fmt.Printf("[%s]: %s\n", addr, scanner.Text())
+		var msg models.Message
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			fmt.Println("[system] Received unreadable message from", addr)
+			continue
+		}
+		fmt.Printf("[%s] %s: %s\n", msg.Timestamp.Format("15:04:05"), msg.From, msg.Body)
 	}
-	fmt.Println("Peer disconnected:", addr)
+	if err := scanner.Err(); err != nil {
+		fmt.Println("[system] Error reading from peer", addr, ":", err)
+	}
+	fmt.Println("[system] Peer disconnected:", addr)
 	newNode.RemovePeer(addr)
 }
 
@@ -43,6 +52,9 @@ func WriteLoop(newNode *models.Node) {
 	for scanner.Scan() {
 		message := scanner.Text()
 		newNode.Broadcast(message)
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading stdin:", err)
 	}
 }
 

@@ -2,10 +2,13 @@ package models
 
 import (
 	"crypto/ecdsa"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/mdns"
 )
 
@@ -30,13 +33,13 @@ func (n *Node) AddPeer(addr string, conn net.Conn) bool {
 	}
 
 	if _, exists := n.Peers[addr]; exists {
-		fmt.Println("Already connected to", addr, "- ignoring duplicate")
+		fmt.Println("[system] Already connected to", addr, "- ignoring duplicate")
 		conn.Close()
 		return false
 	}
 
 	n.Peers[addr] = conn
-	fmt.Println("Peer added:", addr, "| total peers:", len(n.Peers))
+	fmt.Println("[system] Peer added:", addr, "| total peers:", len(n.Peers))
 	return true
 }
 
@@ -47,19 +50,35 @@ func (n *Node) RemovePeer(addr string) {
 	if conn, exists := n.Peers[addr]; exists {
 		conn.Close()
 		delete(n.Peers, addr)
-		fmt.Println("Peer removed:", addr, "| total peers:", len(n.Peers))
+		fmt.Println("[system] Peer removed:", addr, "| total peers:", len(n.Peers))
 	}
 }
 
-// Broadcast sends message to every currently connected peer.
-func (n *Node) Broadcast(message string) {
+// Broadcast wraps body in a structured Message (sender name, node ID,
+// timestamp, message ID) and sends it as newline-delimited JSON to every
+// connected peer.
+func (n *Node) Broadcast(body string) {
+	msg := Message{
+		ID:        uuid.New().String(),
+		From:      n.Name,
+		NodeID:    n.NodeId,
+		Timestamp: time.Now(),
+		Body:      body,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		fmt.Println("[system] Failed to encode message:", err)
+		return
+	}
+	data = append(data, '\n')
+
 	n.peersMu.Lock()
 	defer n.peersMu.Unlock()
 
 	for addr, conn := range n.Peers {
-		_, err := conn.Write([]byte(message + "\n"))
-		if err != nil {
-			fmt.Println("Failed to send to", addr, ":", err)
+		if _, err := conn.Write(data); err != nil {
+			fmt.Println("[system] Failed to send to", addr, ":", err)
 		}
 	}
 }

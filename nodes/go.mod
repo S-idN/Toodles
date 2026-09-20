@@ -3,6 +3,7 @@ module p2pChat
 go 1.27.1
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/mdns v1.0.7 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
 	golang.org/x/mod v0.31.0 // indirect

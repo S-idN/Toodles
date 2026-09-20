@@ -24,15 +24,10 @@ func GenerateBaseId() string {
 }
 
 func GenerateFinalId() string {
-	// bootstrapNodes := []string{"ip_here"}
 	hashId_portion := GenerateBaseId()
-
-	// for i := 0; i < len(bootstrapNodes); i++ {
-	// 	hashId_portion += peer.ReturnHashIdPortion()
-	// }
-
 	return hashId_portion
 }
+
 func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 
 	inputReader := bufio.NewReader(os.Stdin)
@@ -53,15 +48,12 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 		fmt.Println("Invalid name", err)
 		os.Exit(1)
 	}
-	//NODE : Name
 	name := inputName[:len(inputName)-1]
 	newNode.Name = name
 	fmt.Println("Name is", newNode.Name)
 
-	//NODE : Listen Port
 	newNode.ListenPort = listenPort
 
-	//NODE : Conn (listens for incoming connections in the background)
 	go peer.StartServer(listenPort, newNode)
 
 	newNode.Server = P2pMDNS.SetupMDNS(listenPort, newNode)
@@ -100,7 +92,7 @@ func promptEntrySelection(entries []string, scanner *bufio.Scanner) (addr string
 
 		parts := strings.SplitN(entries[choice], "|", 3)
 		if len(parts) == 3 {
-			return parts[1], parts[2] // addr:port, nodeid
+			return parts[1], parts[2]
 		}
 		return entries[choice], ""
 	}
