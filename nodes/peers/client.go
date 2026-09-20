@@ -2,17 +2,29 @@ package peer
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
+	"p2pChat/identity"
 	"p2pChat/models"
 )
 
-func ConnectToPeer(address string) (net.Conn, error) {
-	conn, err := net.Dial("tcp", address)
-
+func ConnectToPeer(address string, newNode *models.Node, expectedPeerID string) (net.Conn, error) {
+	cert, err := identity.GenerateSelfSignedCert(newNode.PrivateKey, newNode.Name)
 	if err != nil {
-		return nil, fmt.Errorf("Could not connect to peer: %w", err)
+		return nil, fmt.Errorf("cert generation error: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:          []tls.Certificate{cert},
+		InsecureSkipVerify:    true,
+		VerifyPeerCertificate: identity.VerifyPeerID(expectedPeerID, nil),
+	}
+
+	conn, err := tls.Dial("tcp", address, tlsConfig)
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to peer: %w", err)
 	}
 	return conn, nil
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"p2pChat/P2pMDNS"
+	"p2pChat/identity"
 	"p2pChat/models"
 	peer "p2pChat/peers"
 	"strconv"
@@ -32,11 +33,18 @@ func GenerateFinalId() string {
 
 	return hashId_portion
 }
-
 func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 
 	inputReader := bufio.NewReader(os.Stdin)
-	newNode.NodeId = GenerateFinalId()
+
+	key, err := identity.LoadOrCreateKey(".")
+	if err != nil {
+		fmt.Println("Identity error:", err)
+		os.Exit(1)
+	}
+	newNode.PrivateKey = key
+	newNode.NodeId = identity.NodeIDFromKey(key)
+
 	fmt.Println("Your Node ID:", newNode.NodeId)
 	fmt.Println("Enter a node name:")
 	inputName, err := inputReader.ReadString('\n')
@@ -56,7 +64,7 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 	//NODE : Conn (listens for incoming connections in the background)
 	go peer.StartServer(listenPort, newNode)
 
-	newNode.Server = P2pMDNS.SetupMDNS(listenPort)
+	newNode.Server = P2pMDNS.SetupMDNS(listenPort, newNode)
 
 	StartPeerOps(newNode)
 
@@ -65,15 +73,13 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 	return newNode
 }
 
-// promptEntrySelection prints "name|addr:port" entries and returns the
-// "addr:port" portion of the one the user picks.
-func promptEntrySelection(entries []string, scanner *bufio.Scanner) string {
+func promptEntrySelection(entries []string, scanner *bufio.Scanner) (addr string, nodeID string) {
 	for {
 		fmt.Println("Discovered peers:")
 		for i, e := range entries {
-			parts := strings.SplitN(e, "|", 2)
+			parts := strings.SplitN(e, "|", 3)
 			label := e
-			if len(parts) == 2 {
+			if len(parts) == 3 {
 				label = fmt.Sprintf("%s (%s)", parts[0], parts[1])
 			}
 			fmt.Printf("  [%d] %s\n", i, label)
@@ -92,11 +98,11 @@ func promptEntrySelection(entries []string, scanner *bufio.Scanner) string {
 			continue
 		}
 
-		parts := strings.SplitN(entries[choice], "|", 2)
-		if len(parts) == 2 {
-			return parts[1] // addr:port
+		parts := strings.SplitN(entries[choice], "|", 3)
+		if len(parts) == 3 {
+			return parts[1], parts[2] // addr:port, nodeid
 		}
-		return entries[choice]
+		return entries[choice], ""
 	}
 }
 
@@ -117,10 +123,10 @@ func StartPeerOps(newNode *models.Node) {
 				continue
 			}
 
-			addr := promptEntrySelection(entries, scanner) // pass the SAME scanner in
-			fmt.Println("Connecting to", addr)
+			addr, expectedPeerID := promptEntrySelection(entries, scanner)
+			fmt.Println("Connecting to", addr, "expecting peer ID", expectedPeerID)
 
-			conn, err := peer.ConnectToPeer(addr)
+			conn, err := peer.ConnectToPeer(addr, newNode, expectedPeerID)
 			if err != nil {
 				fmt.Println("Connect error:", err)
 				continue

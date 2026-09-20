@@ -3,6 +3,7 @@ package P2pMDNS
 import (
 	"fmt"
 	"p2pChat/models"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/mdns"
@@ -16,9 +17,19 @@ func LookupMDNS(newNode *models.Node) ([]string, error) {
 	wg.Go(func() {
 		for entry := range entriesCh {
 			fmt.Printf("Got new entry: %v\n", entry)
-			if entry.Port != 0 {
-				entryList = append(entryList, fmt.Sprintf("%s|%s:%d", entry.Name, entry.AddrV4, entry.Port))
+
+			if entry.Port == 0 || !strings.Contains(entry.Name, "_toodles__p2pchat._tcp") {
+				continue
 			}
+
+			nodeID := ""
+			for _, field := range entry.InfoFields {
+				if strings.HasPrefix(field, "nodeid=") {
+					nodeID = strings.TrimPrefix(field, "nodeid=")
+				}
+			}
+
+			entryList = append(entryList, fmt.Sprintf("%s|%s:%d|%s", entry.Name, entry.AddrV4, entry.Port, nodeID))
 		}
 	})
 
@@ -33,6 +44,5 @@ func LookupMDNS(newNode *models.Node) ([]string, error) {
 		return nil, fmt.Errorf("no valid peers found")
 	}
 
-	//Maybe add an error later hopefully
 	return entryList, nil
 }

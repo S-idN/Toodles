@@ -1,14 +1,30 @@
 package peer
 
 import (
+	"crypto/tls"
 	"fmt"
-	"net"
+	"p2pChat/identity"
 	"p2pChat/models"
 	"strconv"
 )
 
 func StartServer(port int, newNode *models.Node) {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(port))
+	cert, err := identity.GenerateSelfSignedCert(newNode.PrivateKey, newNode.Name)
+	if err != nil {
+		fmt.Println("Cert generation error:", err)
+		return
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		ClientAuth:         tls.RequireAnyClientCert,
+		InsecureSkipVerify: true,
+		VerifyPeerCertificate: identity.VerifyPeerID("", func(observedID string) {
+			fmt.Println("Incoming connection from peer ID:", observedID)
+		}),
+	}
+
+	listener, err := tls.Listen("tcp", ":"+strconv.Itoa(port), tlsConfig)
 	if err != nil {
 		fmt.Println("Failed to start listener:", err)
 		return

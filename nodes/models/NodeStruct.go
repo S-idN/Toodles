@@ -1,6 +1,7 @@
 package models
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"net"
 	"sync"
@@ -14,6 +15,7 @@ type Node struct {
 	ListenPort int
 	Server     *mdns.Server
 	PeerList   []string
+	PrivateKey *ecdsa.PrivateKey
 
 	peersMu sync.Mutex
 	Peers   map[string]net.Conn
