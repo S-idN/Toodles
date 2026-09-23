@@ -22,6 +22,31 @@ type Node struct {
 
 	peersMu sync.Mutex
 	Peers   map[string]net.Conn
+
+	knownMu    sync.Mutex
+	KnownPeers map[string]string
+}
+
+func (n *Node) RememberPeer(addr, nodeID string) {
+	n.knownMu.Lock()
+	defer n.knownMu.Unlock()
+	if n.KnownPeers == nil {
+		n.KnownPeers = make(map[string]string)
+	}
+	n.KnownPeers[addr] = nodeID
+}
+
+func (n *Node) ExpectedIDFor(addr string) (string, bool) {
+	n.knownMu.Lock()
+	defer n.knownMu.Unlock()
+	id, ok := n.KnownPeers[addr]
+	return id, ok
+}
+
+func (n *Node) ForgetPeer(addr string) {
+	n.knownMu.Lock()
+	defer n.knownMu.Unlock()
+	delete(n.KnownPeers, addr)
 }
 
 func (n *Node) AddPeer(addr string, conn net.Conn) bool {
@@ -54,9 +79,6 @@ func (n *Node) RemovePeer(addr string) {
 	}
 }
 
-// Broadcast wraps body in a structured Message (sender name, node ID,
-// timestamp, message ID) and sends it as newline-delimited JSON to every
-// connected peer.
 func (n *Node) Broadcast(body string) {
 	msg := Message{
 		ID:        uuid.New().String(),
@@ -81,4 +103,15 @@ func (n *Node) Broadcast(body string) {
 			fmt.Println("[system] Failed to send to", addr, ":", err)
 		}
 	}
+}
+
+func (n *Node) PeerAddrs() []string {
+	n.peersMu.Lock()
+	defer n.peersMu.Unlock()
+
+	addrs := make([]string, 0, len(n.Peers))
+	for addr := range n.Peers {
+		addrs = append(addrs, addr)
+	}
+	return addrs
 }

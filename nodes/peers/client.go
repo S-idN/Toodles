@@ -3,12 +3,15 @@ package peer
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"p2pChat/P2pMDNS"
 	"p2pChat/identity"
 	"p2pChat/models"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func ConnectToPeer(address string, newNode *models.Node, expectedPeerID string) (net.Conn, error) {
@@ -30,23 +33,105 @@ func ConnectToPeer(address string, newNode *models.Node, expectedPeerID string) 
 	return conn, nil
 }
 
-func ReadFromPeer(addr string, conn net.Conn, newNode *models.Node) {
-	scanner := bufio.NewScanner(conn)
+func StartPeerOps(newNode *models.Node) {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	fmt.Println("Type a message to broadcast to connected peers, /scan to discover peers, or /disconnect to drop a peer.")
+
 	for scanner.Scan() {
-		var msg models.Message
-		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			fmt.Println("[system] Received unreadable message from", addr)
+		line := scanner.Text()
+
+		if line == "/scan" {
+			fmt.Println("Scanning local network...")
+			entries, err := P2pMDNS.LookupMDNS(newNode)
+
+			if err != nil {
+				fmt.Println("Scan error or no peers found:", err)
+				continue
+			}
+
+			addr, expectedPeerID := promptEntrySelection(entries, scanner)
+			fmt.Println("Connecting to", addr, "expecting peer ID", expectedPeerID)
+
+			conn, err := peer.ConnectToPeer(addr, newNode, expectedPeerID)
+			if err != nil {
+				fmt.Println("Connect error:", err)
+				continue
+			}
+
+			if newNode.AddPeer(addr, conn) {
+				newNode.RememberPeer(addr, expectedPeerID)
+				go peer.ReadFromPeer(addr, conn, newNode)
+			}
 			continue
 		}
-		fmt.Printf("[%s] %s: %s\n", msg.Timestamp.Format("15:04:05"), msg.From, msg.Body)
+
+		if line == "/disconnect" {
+			addrs := newNode.PeerAddrs()
+			if len(addrs) == 0 {
+				fmt.Println("[system] No connected peers.")
+				continue
+			}
+
+			fmt.Println("Connected peers:")
+			for i, a := range addrs {
+				fmt.Printf("  [%d] %s\n", i, a)
+			}
+			fmt.Print("Select a peer to disconnect: ")
+
+			if !scanner.Scan() {
+				continue
+			}
+			choice, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+			if err != nil || choice < 0 || choice >= len(addrs) {
+				fmt.Println("[system] Invalid selection.")
+				continue
+			}
+
+			addr := addrs[choice]
+			newNode.ForgetPeer(addr) // do this FIRST so the reconnect loop doesn't kick in
+			newNode.RemovePeer(addr) // closes the conn, triggering ReadFromPeer's exit + RemovePeer (idempotent)
+			fmt.Println("[system] Disconnected from", addr)
+			continue
+		}
+
+		newNode.Broadcast(line)
 	}
-	if err := scanner.Err(); err != nil {
-		fmt.Println("[system] Error reading from peer", addr, ":", err)
-	}
-	fmt.Println("[system] Peer disconnected:", addr)
-	newNode.RemovePeer(addr)
 }
 
+func reconnectWithBackoff(addr string, expectedID string, newNode *models.Node) {
+	delay := 2 * time.Second
+	const maxDelay = 30 * time.Second
+	const maxAttempts = 6
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if _, stillKnown := newNode.ExpectedIDFor(addr); !stillKnown {
+			return // peer was forgotten, stop retrying
+		}
+
+		fmt.Printf("[system] Reconnect attempt %d to %s...\n", attempt, addr)
+		time.Sleep(delay)
+
+		conn, err := ConnectToPeer(addr, newNode, expectedID)
+		if err != nil {
+			fmt.Println("[system] Reconnect failed:", err)
+			if delay < maxDelay {
+				delay *= 2
+			}
+			continue
+		}
+
+		if newNode.AddPeer(addr, conn) {
+			fmt.Println("[system] Reconnected to", addr)
+			go ReadFromPeer(addr, conn, newNode)
+			return
+		}
+		return // AddPeer returned false (dupe) - someone else already reconnected
+	}
+
+	fmt.Println("[system] Giving up on reconnecting to", addr, "after", maxAttempts, "attempts")
+	newNode.ForgetPeer(addr)
+}
 func WriteLoop(newNode *models.Node) {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {

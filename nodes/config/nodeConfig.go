@@ -65,14 +65,14 @@ func SetupNewNode(newNode *models.Node, listenPort int) (retNode *models.Node) {
 	return newNode
 }
 
-func promptEntrySelection(entries []string, scanner *bufio.Scanner) (addr string, nodeID string) {
+func promptEntrySelection(entries []string, scanner *bufio.Scanner) (addr string, nodeID string, peerName string) {
 	for {
 		fmt.Println("Discovered peers:")
 		for i, e := range entries {
-			parts := strings.SplitN(e, "|", 3)
+			parts := strings.SplitN(e, "|", 4)
 			label := e
-			if len(parts) == 3 {
-				label = fmt.Sprintf("%s (%s)", parts[0], parts[1])
+			if len(parts) == 4 {
+				label = fmt.Sprintf("%s (%s)", parts[3], parts[1])
 			}
 			fmt.Printf("  [%d] %s\n", i, label)
 		}
@@ -90,18 +90,18 @@ func promptEntrySelection(entries []string, scanner *bufio.Scanner) (addr string
 			continue
 		}
 
-		parts := strings.SplitN(entries[choice], "|", 3)
-		if len(parts) == 3 {
-			return parts[1], parts[2]
+		parts := strings.SplitN(entries[choice], "|", 4)
+		if len(parts) == 4 {
+			return parts[1], parts[2], parts[3]
 		}
-		return entries[choice], ""
+		return entries[choice], "", ""
 	}
 }
 
 func StartPeerOps(newNode *models.Node) {
 	scanner := bufio.NewScanner(os.Stdin)
 
-	fmt.Println("Type a message to broadcast to connected peers, or /scan to discover peers.")
+	fmt.Println("Type a message to broadcast to connected peers, /scan to discover peers, or /disconnect to drop a peer.")
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -115,7 +115,31 @@ func StartPeerOps(newNode *models.Node) {
 				continue
 			}
 
-			addr, expectedPeerID := promptEntrySelection(entries, scanner)
+			addr, expectedPeerID, peerName := promptEntrySelection(entries, scanner)
+
+			if expectedPeerID == "" {
+				fmt.Println("[system] No fingerprint advertised by this peer - refusing to connect.")
+				continue
+			}
+
+			fmt.Println()
+			fmt.Println("=== Verify peer identity before connecting ===")
+			fmt.Println("Your name:         ", newNode.Name)
+			fmt.Println("Your fingerprint:  ", newNode.NodeId)
+			fmt.Println("Peer name:         ", peerName)
+			fmt.Println("Peer fingerprint:  ", expectedPeerID)
+			fmt.Println("Confirm with the other person, out loud or via another channel,")
+			fmt.Println("that their fingerprint matches what's shown above.")
+			fmt.Print("Type 'yes' to trust and connect, anything else to cancel: ")
+
+			if !scanner.Scan() {
+				continue
+			}
+			if strings.TrimSpace(strings.ToLower(scanner.Text())) != "yes" {
+				fmt.Println("[system] Connection cancelled.")
+				continue
+			}
+
 			fmt.Println("Connecting to", addr, "expecting peer ID", expectedPeerID)
 
 			conn, err := peer.ConnectToPeer(addr, newNode, expectedPeerID)
@@ -125,8 +149,38 @@ func StartPeerOps(newNode *models.Node) {
 			}
 
 			if newNode.AddPeer(addr, conn) {
+				newNode.RememberPeer(addr, expectedPeerID)
 				go peer.ReadFromPeer(addr, conn, newNode)
 			}
+			continue
+		}
+
+		if line == "/disconnect" {
+			addrs := newNode.PeerAddrs()
+			if len(addrs) == 0 {
+				fmt.Println("[system] No connected peers.")
+				continue
+			}
+
+			fmt.Println("Connected peers:")
+			for i, a := range addrs {
+				fmt.Printf("  [%d] %s\n", i, a)
+			}
+			fmt.Print("Select a peer to disconnect: ")
+
+			if !scanner.Scan() {
+				continue
+			}
+			choice, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+			if err != nil || choice < 0 || choice >= len(addrs) {
+				fmt.Println("[system] Invalid selection.")
+				continue
+			}
+
+			addr := addrs[choice]
+			newNode.ForgetPeer(addr)
+			newNode.RemovePeer(addr)
+			fmt.Println("[system] Disconnected from", addr)
 			continue
 		}
 

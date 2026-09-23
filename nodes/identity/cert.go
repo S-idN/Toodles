@@ -24,7 +24,7 @@ func GenerateSelfSignedCert(key *ecdsa.PrivateKey, nodeName string) (tls.Certifi
 			CommonName: nodeName,
 		},
 		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // long-lived; identity is the key, not cert expiry
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,

@@ -23,13 +23,18 @@ func LookupMDNS(newNode *models.Node) ([]string, error) {
 			}
 
 			nodeID := ""
+			peerName := ""
 			for _, field := range entry.InfoFields {
 				if strings.HasPrefix(field, "nodeid=") {
 					nodeID = strings.TrimPrefix(field, "nodeid=")
 				}
+				if strings.HasPrefix(field, "name=") {
+					peerName = strings.TrimPrefix(field, "name=")
+				}
 			}
 
-			entryList = append(entryList, fmt.Sprintf("%s|%s:%d|%s", entry.Name, entry.AddrV4, entry.Port, nodeID))
+			// format: name|addr:port|nodeid|peername
+			entryList = append(entryList, fmt.Sprintf("%s|%s:%d|%s|%s", entry.Name, entry.AddrV4, entry.Port, nodeID, peerName))
 		}
 	})
 
