@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"p2pChat/identity"
 	"p2pChat/models"
 	"time"
@@ -31,21 +30,20 @@ func ConnectToPeer(address string, newNode *models.Node, expectedPeerID string) 
 	return conn, nil
 }
 
+// ReadFromPeer parses incoming messages and hands them to the GUI via
+// newNode.OnMessage, instead of printing. No stdout coupling.
 func ReadFromPeer(addr string, conn net.Conn, newNode *models.Node) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		var msg models.Message
 		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-			fmt.Println("[system] Received unreadable message from", addr)
-			continue
+			continue // silently skip malformed lines; GUI has no console to report to
 		}
-		fmt.Print("[", msg.Timestamp.Format("15:04:05"), "]: ", msg.From, ": ", msg.Body, "\n")
+		if newNode.OnMessage != nil {
+			newNode.OnMessage(addr, msg)
+		}
 	}
-	if err := scanner.Err(); err != nil {
-		fmt.Println("[system] Error reading from peer", addr, ":", err)
-	}
-	fmt.Println("[system] Peer disconnected:", addr)
-	newNode.RemovePeer(addr)
+	newNode.RemovePeer(addr) // triggers OnPeerDisconnected internally
 
 	if expectedID, known := newNode.ExpectedIDFor(addr); known {
 		go reconnectWithBackoff(addr, expectedID, newNode)
@@ -59,15 +57,13 @@ func reconnectWithBackoff(addr string, expectedID string, newNode *models.Node) 
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if _, stillKnown := newNode.ExpectedIDFor(addr); !stillKnown {
-			return // peer was forgotten, stop retrying
+			return
 		}
 
-		fmt.Printf("[system] Reconnect attempt %d to %s...\n", attempt, addr)
 		time.Sleep(delay)
 
 		conn, err := ConnectToPeer(addr, newNode, expectedID)
 		if err != nil {
-			fmt.Println("[system] Reconnect failed:", err)
 			if delay < maxDelay {
 				delay *= 2
 			}
@@ -75,28 +71,11 @@ func reconnectWithBackoff(addr string, expectedID string, newNode *models.Node) 
 		}
 
 		if newNode.AddPeer(addr, conn) {
-			fmt.Println("[system] Reconnected to", addr)
 			go ReadFromPeer(addr, conn, newNode)
 			return
 		}
-		return // AddPeer returned false (dupe) - someone else already reconnected
+		return
 	}
 
-	fmt.Println("[system] Giving up on reconnecting to", addr, "after", maxAttempts, "attempts")
 	newNode.ForgetPeer(addr)
-}
-func WriteLoop(newNode *models.Node) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		message := scanner.Text()
-		newNode.Broadcast(message)
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading stdin:", err)
-	}
-}
-
-func SendMessage(conn net.Conn, message string) error {
-	_, err := conn.Write([]byte(message + "\n"))
-	return err
 }

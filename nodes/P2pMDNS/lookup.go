@@ -4,50 +4,38 @@ import (
 	"fmt"
 	"p2pChat/models"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/hashicorp/mdns"
 )
 
-func LookupMDNS(newNode *models.Node) ([]string, error) {
-	var wg sync.WaitGroup
-
-	entryList := []string{}
-	entriesCh := make(chan *mdns.ServiceEntry, 10)
-	wg.Go(func() {
-		for entry := range entriesCh {
-			fmt.Printf("Got new entry: %v\n", entry)
-
-			if entry.Port == 0 || !strings.Contains(entry.Name, "_toodles__p2pchat._tcp") {
-				continue
-			}
-
-			nodeID := ""
-			peerName := ""
-			for _, field := range entry.InfoFields {
-				if strings.HasPrefix(field, "nodeid=") {
-					nodeID = strings.TrimPrefix(field, "nodeid=")
+func StartContinuousScan(newNode *models.Node, interval time.Duration) {
+	go func() {
+		for {
+			entriesCh := make(chan *mdns.ServiceEntry, 10)
+			go func() {
+				for entry := range entriesCh {
+					if entry.Port == 0 || !strings.Contains(entry.Name, "_toodles__p2pchat._tcp") {
+						continue
+					}
+					nodeID, peerName := "", ""
+					for _, f := range entry.InfoFields {
+						if strings.HasPrefix(f, "nodeid=") {
+							nodeID = strings.TrimPrefix(f, "nodeid=")
+						}
+						if strings.HasPrefix(f, "name=") {
+							peerName = strings.TrimPrefix(f, "name=")
+						}
+					}
+					addr := fmt.Sprintf("%s:%d", entry.AddrV4, entry.Port)
+					if nodeID != "" && nodeID != newNode.NodeId { // don't discover self
+						newNode.AddDiscovered(models.DiscoveredPeer{Addr: addr, Name: peerName, ID: nodeID})
+					}
 				}
-				if strings.HasPrefix(field, "name=") {
-					peerName = strings.TrimPrefix(field, "name=")
-				}
-			}
-
-			// format: name|addr:port|nodeid|peername
-			entryList = append(entryList, fmt.Sprintf("%s|%s:%d|%s|%s", entry.Name, entry.AddrV4, entry.Port, nodeID, peerName))
+			}()
+			mdns.Lookup("_toodles__p2pchat._tcp", entriesCh)
+			close(entriesCh)
+			time.Sleep(interval)
 		}
-	})
-
-	mdns.Lookup("_toodles__p2pchat._tcp", entriesCh)
-
-	close(entriesCh)
-	wg.Wait()
-
-	newNode.PeerList = entryList
-
-	if len(entryList) == 0 {
-		return nil, fmt.Errorf("no valid peers found")
-	}
-
-	return entryList, nil
+	}()
 }
